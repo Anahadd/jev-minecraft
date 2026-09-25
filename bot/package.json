@@ -1,0 +1,21 @@
+{
+  "name": "jev-minecraft-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Minecraft bot that uses TypeSafe's Jev System One model to pick each action on its way to a diamond.",
+  "type": "module",
+  "main": "src/main.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "mineflayer": "^4.39.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "prismarine-viewer": "^1.33.0",
+    "vec3": "^0.1.10"
+  }
+}

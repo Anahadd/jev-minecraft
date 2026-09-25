@@ -1,0 +1,63 @@
+name: jev-minecraft
+
+services:
+  minecraft:
+    image: itzg/minecraft-server:java21
+    environment:
+      EULA: ${ACCEPT_MINECRAFT_EULA:-FALSE}
+      TYPE: VANILLA
+      VERSION: "1.20.4"
+      ONLINE_MODE: "FALSE"
+      MODE: survival
+      DIFFICULTY: ${DIFFICULTY:-easy}
+      SEED: ${WORLD_SEED:-jev-diamonds}
+      SPAWN_PROTECTION: "0"
+      VIEW_DISTANCE: "8"
+      SIMULATION_DISTANCE: "8"
+      ALLOW_NETHER: "FALSE"
+      MAX_PLAYERS: "4"
+      MEMORY: 2G
+      MOTD: Jev diamond run
+    ports:
+      - "127.0.0.1:25565:25565"
+    volumes:
+      - world:/data
+    networks:
+      - mc
+
+  bot:
+    build: ./bot
+    depends_on:
+      minecraft:
+        condition: service_healthy
+    environment:
+      MC_HOST: minecraft
+      MC_PORT: "25565"
+      MC_VERSION: "1.20.4"
+      POLICY: ${POLICY:-jev}
+      JEV_PROVIDER: ${JEV_PROVIDER:-typesafe}
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      JEV_MIN_CONFIDENCE: ${JEV_MIN_CONFIDENCE:-0.2}
+      MAX_STEPS: ${MAX_STEPS:-3000}
+      VIEWER_PORT: "3007"
+      RUNS_DIR: /app/runs
+    ports:
+      - "127.0.0.1:3007:3007"
+    volumes:
+      - ./runs:/app/runs
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - mc
+
+volumes:
+  world:
+
+networks:
+  mc:

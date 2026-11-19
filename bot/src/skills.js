@@ -330,14 +330,16 @@ export function createSkills (bot, { badPositions }) {
     const skill = skills[candidate.kind]
     if (!skill) return { ok: false, detail: `unknown action kind ${candidate.kind}` }
     const controller = new AbortController()
+    const onDeath = () => controller.abort(new SkillError('died during the action'))
+    bot.once('death', onDeath)
     const task = skill(candidate.params, controller.signal)
-    let timer
-    const timeout = new Promise((_resolve, reject) => {
-      timer = setTimeout(() => reject(new SkillError(`timed out after ${candidate.timeoutMs / 1000}s`)), candidate.timeoutMs)
+    const timeout = sleep(candidate.timeoutMs, undefined, { signal: controller.signal }).then(() => {
+      throw new SkillError(`timed out after ${candidate.timeoutMs / 1000}s`)
     })
     try {
       return { ok: true, detail: await Promise.race([task, timeout]) }
     } catch (error) {
+      const failure = controller.signal.reason ?? error
       controller.abort()
       stopEverything()
       const grace = new AbortController()
@@ -346,13 +348,14 @@ export function createSkills (bot, { badPositions }) {
           task.then(() => true, () => true),
           sleep(6000, false, { signal: grace.signal })
         ])
-        if (!settled) throw new SkillError(`${candidate.kind} did not stop after cancellation`, { cause: error })
+        if (!settled) throw new SkillError(`${candidate.kind} did not stop after cancellation`, { cause: failure })
       } finally {
         grace.abort()
       }
-      return { ok: false, detail: error.message }
+      return { ok: false, detail: failure.message }
     } finally {
-      clearTimeout(timer)
+      controller.abort()
+      bot.off('death', onDeath)
     }
   }
 

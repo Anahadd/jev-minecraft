@@ -77,3 +77,36 @@ test('reports a failed collection when the server never awards the item', async 
   assert.match(steps[0].detail, /no nearby drops picked up/)
   assert.equal(bot.listenerCount('playerCollect'), 0)
 })
+
+test('discards a decision made before death and waits for the respawn', async () => {
+  const bot = dropFixture()
+  bot.isAlive = true
+  let loadedRespawn = false
+  bot.waitForChunksToLoad = async () => { loadedRespawn = true }
+  const policy = createPolicy({ mode: 'heuristic' })
+  const events = []
+  const result = await runAgent({
+    bot,
+    config: { maxSteps: 2, world: WORLD },
+    policy: {
+      decide (context) {
+        if (context.memory.step === 1) {
+          bot.isAlive = false
+          bot.emit('death')
+          setImmediate(() => {
+            bot.isAlive = true
+            bot.emit('spawn')
+          })
+        } else {
+          assert.equal(loadedRespawn, true)
+        }
+        return policy.decide(context)
+      }
+    },
+    runlog: { event: (type, data) => events.push({ type, ...data }) }
+  })
+  assert.equal(result.success, true)
+  assert.equal(result.stats.deaths, 1)
+  assert.equal(result.stats.steps, 2)
+  assert.equal(events.find((event) => event.type === 'step').detail, 'died before the action could start')
+})

@@ -50,7 +50,7 @@ test('places a crafting table against a wall when there is no floor beneath its 
 })
 
 test('accepts a descent that lands below the target level', async () => {
-  const bot = {
+  const bot = Object.assign(new EventEmitter(), {
     registry: registryFor('1.20.4'),
     entity: { position: new Vec3(0, 20, 0) },
     pathfinder: {
@@ -65,8 +65,22 @@ test('accepts a descent that lands below the target level', async () => {
     },
     stopDigging () {},
     clearControlStates () {}
-  }
+  })
   const skills = createSkills(bot, { badPositions: new Set() })
   const result = await skills.run({ kind: 'dig_down', params: { targetY: 10 }, timeoutMs: 5000 })
   assert.deepEqual(result, { ok: true, detail: 'reached Y=8' })
+})
+
+test('cancels the active skill when the player dies', async () => {
+  const bot = Object.assign(new EventEmitter(), {
+    registry: registryFor('1.20.4'),
+    pathfinder: { setMovements () {}, setGoal () {}, stop () {} },
+    stopDigging () {},
+    clearControlStates () {}
+  })
+  const skills = createSkills(bot, { badPositions: new Set() })
+  const pending = skills.run({ kind: 'rest', params: { seconds: 5 }, timeoutMs: 8000 })
+  bot.emit('death')
+  assert.deepEqual(await pending, { ok: false, detail: 'died during the action' })
+  assert.equal(bot.listenerCount('death'), 0)
 })

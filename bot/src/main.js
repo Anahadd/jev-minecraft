@@ -25,8 +25,9 @@ let disconnectReason
 
 bot.on('kicked', (reason) => {
   console.error('Kicked:', reason)
-  disconnectReason = `kicked: ${reason}`
-  runlog.event('kicked', { reason: String(reason) })
+  const detail = typeof reason === 'string' ? reason : JSON.stringify(reason)
+  disconnectReason = `kicked: ${detail}`
+  runlog.event('kicked', { reason })
 })
 bot.on('error', (error) => {
   console.error('Bot error:', error.message)

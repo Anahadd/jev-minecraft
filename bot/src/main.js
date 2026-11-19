@@ -21,22 +21,23 @@ const bot = mineflayer.createBot({
 bot.loadPlugin(pathfinderPkg.pathfinder)
 
 let result
-let disconnectReason
+let kickReason
+let connectionError
 
 bot.on('kicked', (reason) => {
   console.error('Kicked:', reason)
   const detail = typeof reason === 'string' ? reason : JSON.stringify(reason)
-  disconnectReason = `kicked: ${detail}`
+  kickReason = `kicked: ${detail}`
   runlog.event('kicked', { reason })
 })
 bot.on('error', (error) => {
   console.error('Bot error:', error.message)
-  disconnectReason = error.message
+  connectionError = error.message
   runlog.event('bot_error', { message: error.message })
 })
 bot.once('end', async (reason) => {
   runlog.event('disconnected', { reason })
-  result ??= { success: false, reason: disconnectReason ?? `disconnected: ${reason}` }
+  result ??= { success: false, reason: kickReason ?? connectionError ?? `disconnected: ${reason}` }
   runlog.summary({ run: runlog.id, policy: config.policy, model: config.jev.model, ...result })
   console.log(result.success ? `Found a diamond! ${JSON.stringify(result.stats)}` : `No diamond: ${result.reason}`)
   console.log(`Run log: ${runlog.dir}`)

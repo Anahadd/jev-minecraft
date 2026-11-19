@@ -1,14 +1,14 @@
-import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { createWriteStream, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
 
 export function createRunLog (runsDir) {
-  const id = new Date().toISOString().replace(/[:.]/g, '-')
-  const dir = join(runsDir, id)
-  mkdirSync(dir, { recursive: true })
-  const stream = createWriteStream(join(dir, 'events.jsonl'), { flags: 'a' })
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  mkdirSync(runsDir, { recursive: true })
+  const dir = mkdtempSync(join(runsDir, `${timestamp}-`))
+  const stream = createWriteStream(join(dir, 'events.jsonl'))
 
   return {
-    id,
+    id: basename(dir),
     dir,
     event (type, data = {}) {
       stream.write(JSON.stringify({ t: new Date().toISOString(), type, ...data }) + '\n')

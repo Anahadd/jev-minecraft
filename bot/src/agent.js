@@ -3,7 +3,7 @@ import { chooseObjective } from './objectives.js'
 import { createPerception } from './perception.js'
 import { createSkills } from './skills.js'
 
-const FAILURE_COOLDOWN_STEPS = { tunnel: 4, explore: 3, dig_down: 3 }
+const FAILURE_COOLDOWN_STEPS = { collect_drops: 5, tunnel: 4, explore: 3, dig_down: 3 }
 // $42 per billion input tokens; output tokens are free (docs.typesafe.ai/models).
 const JEV_USD_PER_INPUT_TOKEN = 42e-9
 
@@ -21,11 +21,11 @@ export async function runAgent ({ bot, config, policy, runlog, say = () => {} })
     runlog.event('death', { step: memory.step })
   })
 
-  while (memory.step < config.maxSteps) {
-    memory.step++
-    stats.steps = memory.step
+  for (;;) {
     const snapshot = perception.snapshot()
     const objective = chooseObjective(snapshot, config.world)
+    if (objective.id !== 'done' && memory.step >= config.maxSteps) break
+    if (objective.id !== 'done') stats.steps = ++memory.step
 
     if (objective.id !== objectiveId) {
       runlog.event('objective', { step: memory.step, objective: objective.id, position: snapshot.position })
@@ -64,6 +64,7 @@ export async function runAgent ({ bot, config, policy, runlog, say = () => {} })
       position: snapshot.position,
       health: snapshot.health,
       food: snapshot.food,
+      inventory: snapshot.inventory,
       candidates: candidates.map((c) => c.key),
       choice: chosen.key,
       source: decision.source,

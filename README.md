@@ -32,7 +32,7 @@ docker compose up --build     # server + bot
 
 - Watch in a browser: http://localhost:3007 (needs the optional `canvas` package; see below)
 - Or join with Minecraft Java 1.20.4 at `localhost:25565`
-- Each run writes `runs/<timestamp>/events.jsonl` (every decision with Jev's probabilities) and `summary.json`
+- Each run writes `events.jsonl` and `summary.json` in its own directory under `runs/`. Step events include the inventory, chosen action, and any Jev probabilities.
 
 To iterate on the bot without rebuilding the image:
 
@@ -67,5 +67,9 @@ Jev charges $42 per billion input tokens and nothing for output. A step sends ab
 ## Tests
 
 ```bash
-cd bot && npm test
+cd bot
+npm ci --omit=optional
+npm test
 ```
+
+The tests run without a Minecraft server or an API key. For a gameplay run on a private 1.20.4 server, set `POLICY=heuristic` and compare objective progress, failed actions, and deaths in the run logs.

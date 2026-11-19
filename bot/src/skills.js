@@ -1,7 +1,8 @@
+import { setTimeout as sleep } from 'node:timers/promises'
 import pathfinderPkg from 'mineflayer-pathfinder'
 import vec3 from 'vec3'
 import { DIRECTIONS } from './candidates.js'
-import { FUEL_SMELTS, isLog, isPlanks, plankNameForLog } from './items.js'
+import { FUEL_SMELTS, ORE_DROPS, isLog, isPlanks, isStoneBlock, plankNameForLog } from './items.js'
 import { positionKey } from './perception.js'
 
 const { goals, Movements } = pathfinderPkg
@@ -11,18 +12,21 @@ const WEAPONS = [
   'netherite_sword', 'diamond_sword', 'iron_sword', 'stone_sword', 'golden_sword', 'wooden_sword',
   'diamond_axe', 'iron_axe', 'stone_axe', 'wooden_axe', 'diamond_pickaxe', 'iron_pickaxe', 'stone_pickaxe'
 ]
+const PLACEMENT_FACES = [
+  new Vec3(0, 1, 0), new Vec3(1, 0, 0), new Vec3(-1, 0, 0),
+  new Vec3(0, 0, 1), new Vec3(0, 0, -1), new Vec3(0, -1, 0)
+]
 
 export class SkillError extends Error {}
 
-function sleep (ms, signal) {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(new SkillError('aborted'))
-    const timer = setTimeout(resolve, ms)
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timer)
-      reject(new SkillError('aborted'))
-    }, { once: true })
-  })
+class GoalAtOrBelowY extends goals.GoalY {
+  heuristic (node) {
+    return Math.max(0, node.y - this.y)
+  }
+
+  isEnd (node) {
+    return node.y <= this.y
+  }
 }
 
 export function createSkills (bot, { badPositions }) {
@@ -33,12 +37,21 @@ export function createSkills (bot, { badPositions }) {
   movements.scafoldingBlocks = ['dirt', 'cobblestone', 'cobbled_deepslate', 'netherrack']
     .map((name) => registry.itemsByName[name]?.id)
     .filter((id) => id !== undefined)
-  for (const name of ['crafting_table', 'furnace', 'chest']) movements.blocksCantBreak.add(registry.blocksByName[name].id)
+  const ores = Object.keys(ORE_DROPS).filter((name) => !isStoneBlock(name))
+  for (const name of ['crafting_table', 'furnace', 'chest', ...ores]) {
+    const block = registry.blocksByName[name]
+    if (block) movements.blocksCantBreak.add(block.id)
+  }
   bot.pathfinder.setMovements(movements)
   bot.pathfinder.thinkTimeout = 10_000
 
   const inventoryItem = (predicate) => bot.inventory.items().find((item) => predicate(item.name))
   const here = () => bot.entity.position
+
+  async function moveTo (goal) {
+    await bot.pathfinder.goto(goal)
+    if (!goal.isEnd(here().floored())) throw new SkillError('path ended before reaching the destination')
+  }
 
   async function equipFor (block) {
     const tool = bot.pathfinder.bestHarvestTool(block)
@@ -48,24 +61,36 @@ export function createSkills (bot, { badPositions }) {
   async function collectDrops (radius, timeoutMs, signal) {
     const deadline = Date.now() + timeoutMs
     const tried = new Set()
-    while (Date.now() < deadline && !signal?.aborted) {
-      const drop = bot.nearestEntity((e) => e.name === 'item' && !tried.has(e.id) && e.position.distanceTo(here()) <= radius)
-      if (!drop) return
-      tried.add(drop.id)
-      const p = drop.position
-      try {
-        await bot.pathfinder.goto(new goals.GoalNear(p.x, p.y, p.z, 1))
-        await sleep(300, signal)
-      } catch (error) {
-        if (signal?.aborted) throw error
+    let collected = 0
+    const onCollect = (collector) => { if (collector === bot.entity) collected++ }
+    bot.on('playerCollect', onCollect)
+    try {
+      // Give freshly mined items time to land and become eligible for pickup.
+      await sleep(600, undefined, { signal })
+      while (Date.now() < deadline) {
+        signal.throwIfAborted()
+        const drop = bot.nearestEntity((e) => e.name === 'item' && !tried.has(e.id) && e.position.distanceTo(here()) <= radius)
+        if (!drop) break
+        tried.add(drop.id)
+        const p = drop.position
+        try {
+          await moveTo(new goals.GoalBlock(p.x, p.y, p.z))
+          await sleep(300, undefined, { signal })
+        } catch {
+          signal.throwIfAborted()
+          bot.pathfinder.setGoal(null)
+        }
       }
+      return collected
+    } finally {
+      bot.off('playerCollect', onCollect)
     }
   }
 
   function placementSpots () {
     const base = here().floored()
     const spots = []
-    for (let dy = 0; dy >= -1; dy--) {
+    for (const dy of [0, 1, -1]) {
       for (let dx = -2; dx <= 2; dx++) {
         for (let dz = -2; dz <= 2; dz++) {
           const target = base.offset(dx, dy, dz)
@@ -73,24 +98,29 @@ export function createSkills (bot, { badPositions }) {
           const gap = Math.max(Math.abs(target.x + 0.5 - here().x), Math.abs(target.z + 0.5 - here().z))
           if (gap < 0.85) continue
           const block = bot.blockAt(target)
-          const below = bot.blockAt(target.offset(0, -1, 0))
           if (!block || !['air', 'cave_air'].includes(block.name)) continue
-          if (!below || below.boundingBox !== 'block') continue
-          spots.push({ target, below, distance: target.offset(0.5, 0, 0.5).distanceTo(here()) + Math.abs(dy) })
+          for (const face of PLACEMENT_FACES) {
+            const support = bot.blockAt(target.minus(face))
+            if (support?.boundingBox !== 'block' || !bot.canSeeBlock(support)) continue
+            spots.push({ target, support, face, distance: target.offset(0.5, 0, 0.5).distanceTo(here()) + Math.abs(dy) })
+          }
         }
       }
     }
     return spots.sort((a, b) => a.distance - b.distance)
   }
 
-  async function placeFromInventory (name) {
+  async function placeFromInventory (name, signal) {
     const item = inventoryItem((n) => n === name)
     if (!item) throw new SkillError(`no ${name} in inventory`)
     for (const spot of placementSpots().slice(0, 8)) {
+      signal.throwIfAborted()
       try {
         await bot.equip(item, 'hand')
-        await bot.placeBlock(spot.below, new Vec3(0, 1, 0))
+        signal.throwIfAborted()
+        await bot.placeBlock(spot.support, spot.face)
       } catch {
+        signal.throwIfAborted()
         continue
       }
       const placed = bot.blockAt(spot.target)
@@ -100,6 +130,7 @@ export function createSkills (bot, { badPositions }) {
   }
 
   async function pickUp (block, signal) {
+    signal.throwIfAborted()
     const current = bot.blockAt(block.position)
     if (!current || current.name !== block.name) return
     await equipFor(current)
@@ -112,7 +143,7 @@ export function createSkills (bot, { badPositions }) {
     let block = bot.findBlock({ matching: ids, maxDistance: 16 })
     let placed = false
     if (!block) {
-      block = await placeFromInventory(name)
+      block = await placeFromInventory(name, signal)
       placed = true
     }
     if (here().distanceTo(block.position.offset(0.5, 0.5, 0.5)) > 3.5) {
@@ -187,7 +218,7 @@ export function createSkills (bot, { badPositions }) {
           if (!furnace.fuelItem() && furnace.inputItem() && (furnace.fuel ?? 0) <= 0.01) await addFuel(furnace)
           if (furnace.outputItem()) await furnace.takeOutput()
           if (!furnace.inputItem() && !furnace.outputItem()) break
-          await sleep(1000, signal)
+          await sleep(1000, undefined, { signal })
         }
       } finally {
         furnace.close()
@@ -199,21 +230,21 @@ export function createSkills (bot, { badPositions }) {
     },
 
     async dig_down ({ targetY }) {
-      await bot.pathfinder.goto(new goals.GoalY(targetY))
+      await moveTo(new GoalAtOrBelowY(targetY))
       return `reached Y=${Math.floor(here().y)}`
     },
 
     async tunnel ({ dir, length }) {
       const [dx, dz] = DIRECTIONS[dir]
       const start = here().floored()
-      await bot.pathfinder.goto(new goals.GoalBlock(start.x + dx * length, start.y, start.z + dz * length))
+      await moveTo(new goals.GoalBlock(start.x + dx * length, start.y, start.z + dz * length))
       return `tunneled ${length} blocks ${dir}`
     },
 
     async explore ({ dir, distance }) {
       const [dx, dz] = DIRECTIONS[dir]
       const start = here()
-      await bot.pathfinder.goto(new goals.GoalNearXZ(start.x + dx * distance, start.z + dz * distance, 4))
+      await moveTo(new goals.GoalNearXZ(start.x + dx * distance, start.z + dz * distance, 4))
       return `walked ${distance} blocks ${dir}`
     },
 
@@ -230,7 +261,7 @@ export function createSkills (bot, { badPositions }) {
           if (distance > 20) return `the ${name} got away`
           if (distance > 3) {
             bot.pathfinder.setGoal(new goals.GoalFollow(target, 2), true)
-            await sleep(250, signal)
+            await sleep(250, undefined, { signal })
             continue
           }
           bot.pathfinder.setGoal(null)
@@ -238,7 +269,7 @@ export function createSkills (bot, { badPositions }) {
           if (weapon && bot.heldItem?.name !== weapon.name) await bot.equip(weapon, 'hand')
           await bot.lookAt(target.position.offset(0, target.height * 0.8, 0), true)
           bot.attack(target)
-          await sleep(650, signal)
+          await sleep(650, undefined, { signal })
         }
       } finally {
         bot.pathfinder.setGoal(null)
@@ -253,7 +284,7 @@ export function createSkills (bot, { badPositions }) {
       if (!threat) return 'no threat nearby'
       bot.pathfinder.setGoal(new goals.GoalInvert(new goals.GoalFollow(threat, 20)), true)
       try {
-        await sleep(6000, signal)
+        await sleep(6000, undefined, { signal })
       } finally {
         bot.pathfinder.setGoal(null)
       }
@@ -269,13 +300,14 @@ export function createSkills (bot, { badPositions }) {
     },
 
     async rest ({ seconds }, signal) {
-      await sleep(seconds * 1000, signal)
+      await sleep(seconds * 1000, undefined, { signal })
       return `rested ${seconds}s`
     },
 
     async collect_drops (_params, signal) {
-      await collectDrops(8, 15_000, signal)
-      return 'collected nearby drops'
+      const collected = await collectDrops(8, 15_000, signal)
+      if (collected === 0) throw new SkillError('no nearby drops picked up')
+      return `picked up ${collected} dropped item stack(s)`
     }
   }
 
@@ -308,7 +340,16 @@ export function createSkills (bot, { badPositions }) {
     } catch (error) {
       controller.abort()
       stopEverything()
-      await Promise.race([task.catch(() => {}), sleep(3000)])
+      const grace = new AbortController()
+      try {
+        const settled = await Promise.race([
+          task.then(() => true, () => true),
+          sleep(6000, false, { signal: grace.signal })
+        ])
+        if (!settled) throw new SkillError(`${candidate.kind} did not stop after cancellation`, { cause: error })
+      } finally {
+        grace.abort()
+      }
       return { ok: false, detail: error.message }
     } finally {
       clearTimeout(timer)

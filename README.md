@@ -9,7 +9,7 @@ A survival Minecraft bot that uses [Jev](https://docs.typesafe.ai), TypeSafe's S
  Mineflayer bot ──> perception (line of sight only, no x-ray)
         |                 |
         |                 v
-        |        objective ladder (code): wood -> stone -> iron -> smelt -> iron pickaxe -> Y=-58
+        |        objective ladder (code): wood -> stone -> iron -> smelt -> two iron pickaxes -> Y=-58
         |                 |
         |                 v
         |        legal actions for this moment (5–30 options)
@@ -22,6 +22,8 @@ A survival Minecraft bot that uses [Jev](https://docs.typesafe.ai), TypeSafe's S
 ```
 
 Code owns the control flow. Jev makes one narrow decision per step: which legal action to take next. This is the pattern TypeSafe recommends for System One models.
+
+The bot crafts a spare iron pickaxe before descending. If the first pickaxe breaks during the search, it keeps mining with the spare.
 
 ## Run
 

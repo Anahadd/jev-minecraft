@@ -203,7 +203,7 @@ export function createSkills (bot, { badPositions }) {
       return `crafted ${item}`
     },
 
-    async smelt (_params, signal) {
+    async smelt ({ count }, signal) {
       const rawId = registry.itemsByName.raw_iron.id
       const ingotId = registry.itemsByName.iron_ingot.id
       const startIngots = bot.inventory.count(ingotId)
@@ -211,7 +211,7 @@ export function createSkills (bot, { badPositions }) {
       const furnace = await bot.openFurnace(block)
       try {
         if (furnace.outputItem()) await furnace.takeOutput()
-        const raw = bot.inventory.count(rawId)
+        const raw = Math.min(count, bot.inventory.count(rawId))
         if (raw > 0) await furnace.putInput(rawId, null, raw)
         const deadline = Date.now() + raw * 10_000 + 20_000
         while (Date.now() < deadline) {

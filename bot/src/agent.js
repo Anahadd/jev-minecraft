@@ -3,6 +3,7 @@ import { buildCandidates, createMemory } from './candidates.js'
 import { chooseObjective } from './objectives.js'
 import { createPerception } from './perception.js'
 import { createSkills } from './skills.js'
+import { count } from './items.js'
 
 const FAILURE_COOLDOWN_STEPS = { collect_drops: 5, tunnel: 4, explore: 3, dig_down: 3 }
 // $42 per billion input tokens; output tokens are free (docs.typesafe.ai/models).
@@ -16,6 +17,7 @@ export async function runAgent ({ bot, config, policy, runlog, say = () => {} })
   const stats = { steps: 0, jevCalls: 0, jevLatencyMs: 0, jevInputTokens: 0, fallbacks: 0, deaths: 0, startedAt: Date.now() }
   let objectiveId = null
   let lastLife = 0
+  let stockedIronPickaxes = false
 
   bot.on('death', () => {
     stats.deaths++
@@ -30,9 +32,12 @@ export async function runAgent ({ bot, config, policy, runlog, say = () => {} })
       await bot.waitForChunksToLoad()
       memory.blockedUntil.clear()
       badPositions.clear()
+      stockedIronPickaxes = false
     }
     const snapshot = perception.snapshot()
-    const objective = chooseObjective(snapshot, config.world)
+    const ironPickaxes = count(snapshot.inventory, 'iron_pickaxe')
+    if (ironPickaxes !== 1) stockedIronPickaxes = ironPickaxes >= 2
+    const objective = chooseObjective(snapshot, config.world, { stockedIronPickaxes })
     if (objective.id !== 'done' && memory.step >= config.maxSteps) break
     if (objective.id !== 'done') stats.steps = ++memory.step
 

@@ -12,7 +12,7 @@ const registry = registryFor('1.20.4')
 
 function dropFixture ({ pickup = true } = {}) {
   const bot = new EventEmitter()
-  const items = [{ name: 'iron_pickaxe', count: 1 }]
+  const items = [{ name: 'iron_pickaxe', count: 2 }]
   const drop = { id: 1, name: 'item', position: new Vec3(1.5, -58, 0.5) }
   Object.assign(bot, {
     registry,
@@ -109,4 +109,29 @@ test('discards a decision made before death and waits for the respawn', async ()
   assert.equal(result.stats.deaths, 1)
   assert.equal(result.stats.steps, 2)
   assert.equal(events.find((event) => event.type === 'step').detail, 'died before the action could start')
+})
+
+test('keeps the diamond objective when the first iron pickaxe breaks', async () => {
+  const bot = dropFixture()
+  const policy = createPolicy({ mode: 'heuristic' })
+  const result = await runAgent({
+    bot,
+    config: { maxSteps: 2, world: WORLD },
+    policy: {
+      decide (context) {
+        assert.equal(context.objective.id, 'find_diamond')
+        if (context.memory.step === 1) {
+          bot.inventory.items()[0].count = 1
+          return {
+            candidate: { key: 'wait', kind: 'rest', params: { seconds: 0 }, timeoutMs: 1000 },
+            source: 'heuristic'
+          }
+        }
+        return policy.decide(context)
+      }
+    },
+    runlog: { event () {} }
+  })
+  assert.equal(result.success, true)
+  assert.equal(result.stats.steps, 2)
 })

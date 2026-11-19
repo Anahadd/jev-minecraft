@@ -115,20 +115,21 @@ export function buildCandidates (snapshot, objective, memory = createMemory()) {
   craft('crafting_table', !hasTable, 'Craft a crafting table from 4 planks. Pickaxes need a crafting table.')
   craft('wooden_pickaxe', tier < 1, 'Craft a wooden pickaxe (3 planks, 2 sticks) at a crafting table.')
   craft('stone_pickaxe', tier < 2, 'Craft a stone pickaxe (3 cobblestone, 2 sticks) at a crafting table.')
-  craft('iron_pickaxe', tier < 3, 'Craft an iron pickaxe (3 iron ingots, 2 sticks) at a crafting table.')
+  craft('iron_pickaxe', objective.id === 'craft_iron_pickaxe',
+    'Craft an iron pickaxe (3 iron ingots, 2 sticks) at a crafting table.')
   craft('furnace', tier >= 2 && count(inventory, 'furnace') === 0 && snapshot.stations.furnace === null,
     'Craft a furnace from 8 cobblestone at a crafting table.')
   craft('stone_sword', tier >= 2 && !hasSword(inventory), 'Craft a stone sword (2 cobblestone, 1 stick) for fighting.')
 
-  const rawIron = count(inventory, 'raw_iron')
+  const smeltCount = Math.min(count(inventory, 'raw_iron'), Math.floor(fuelSmelts(inventory)))
   const furnaceReady = count(inventory, 'furnace') > 0 || snapshot.stations.furnace !== null
-  if (rawIron > 0 && furnaceReady && fuelSmelts(inventory) >= 1) {
+  if (smeltCount > 0 && furnaceReady) {
     add({
       key: 'smelt_raw_iron',
       kind: 'smelt',
-      params: { count: rawIron },
-      description: `Smelt ${rawIron} raw iron into iron ingots in a furnace (about ${rawIron * 10} seconds).`,
-      timeoutMs: rawIron * 10_000 + 40_000
+      params: { count: smeltCount },
+      description: `Smelt ${smeltCount} raw iron into iron ingots in a furnace (about ${smeltCount * 10} seconds).`,
+      timeoutMs: smeltCount * 10_000 + 40_000
     })
   }
 

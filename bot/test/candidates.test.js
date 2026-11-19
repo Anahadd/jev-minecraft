@@ -32,6 +32,16 @@ test('limits dig_down to ten blocks per step', () => {
   assert.equal(digDown.params.targetY, 10)
 })
 
+test('uses shorter tunnels at diamond depth so the bot checks newly exposed ore more often', () => {
+  const underground = { inventory: { iron_pickaxe: 1 }, underground: true }
+  const target = (y) => {
+    const snap = snapshot({ ...underground, position: { x: 0, y, z: 0 } })
+    return buildCandidates(snap, chooseObjective(snap, WORLD)).find((action) => action.key === 'tunnel_east')
+  }
+  assert.equal(target(20).params.length, 12)
+  assert.equal(target(-58).params.length, 4)
+})
+
 test('offers crafting only for items that are useful now', () => {
   const craftable = { stick: true, crafting_table: true, wooden_pickaxe: true }
   const keys = keysFor(snapshot({ inventory: { oak_planks: 8, crafting_table: 1 }, craftable }))

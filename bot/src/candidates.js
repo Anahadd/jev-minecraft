@@ -6,6 +6,7 @@ export const DIRECTIONS = { north: [0, -1], south: [0, 1], east: [1, 0], west: [
 export const TUNNEL_LENGTH = 12
 export const EXPLORE_DISTANCE = 32
 const DIG_DOWN_STEP = 10
+const DIAMOND_TUNNEL_LENGTH = 4
 const FOOD_ANIMALS = new Set(['cow', 'pig', 'sheep', 'rabbit', 'mooshroom'])
 
 export function createMemory () {
@@ -143,13 +144,14 @@ export function buildCandidates (snapshot, objective, memory = createMemory()) {
     })
   }
   if (tier >= 1 && snapshot.underground) {
+    const length = objective.id === 'find_diamond' ? DIAMOND_TUNNEL_LENGTH : TUNNEL_LENGTH
     for (const dir of Object.keys(DIRECTIONS)) {
       const again = memory.lastTunnelDir === dir ? ' This continues your last tunnel.' : ''
       add({
         key: `tunnel_${dir}`,
         kind: 'tunnel',
-        params: { dir, length: TUNNEL_LENGTH },
-        description: `Dig a 1x2 tunnel ${TUNNEL_LENGTH} blocks ${dir} at Y=${y}. Ore in the new tunnel walls becomes visible.${again}`,
+        params: { dir, length },
+        description: `Dig a 1x2 tunnel ${length} blocks ${dir} at Y=${y}. Check the exposed walls for ore.${again}`,
         timeoutMs: 90_000
       })
     }

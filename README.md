@@ -4,9 +4,9 @@ A survival Minecraft bot that uses [Jev](https://docs.typesafe.ai), TypeSafe's S
 
 ## Watch a live survival run
 
-[![First-person gameplay showing the bot mine and collect a naturally generated diamond](docs/media/live-diamond-pickup.gif)](docs/media/live-survival-run.mp4?raw=true)
+[![Gameplay at 5× speed showing the bot collect a naturally generated diamond](docs/media/live-diamond-pickup.gif)](docs/media/live-survival-run.mp4?raw=true)
 
-[**Watch the full gameplay recording**](docs/media/live-survival-run.mp4?raw=true)
+[**Watch the full run at 5× speed (1:57)**](docs/media/live-survival-run.mp4?raw=true)
 
 Recorded live from the bot's first-person viewer in a fresh vanilla Minecraft 1.20.4 world on Easy. The heuristic bot started with an empty inventory, crafted two iron pickaxes, and collected a naturally generated diamond in **102 actions, 9 minutes 37 seconds, and zero deaths**.
 

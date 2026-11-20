@@ -71,6 +71,49 @@ test('accepts a descent that lands below the target level', async () => {
   assert.deepEqual(result, { ok: true, detail: 'reached Y=8' })
 })
 
+test('carves a recess for a crafting table in a one-block-wide shaft', async () => {
+  const registry = registryFor('1.20.4')
+  const target = new Vec3(0, 64, -1)
+  const table = { name: 'crafting_table', position: target }
+  const recipe = {}
+  const mined = []
+  let placed = false
+  const bot = Object.assign(new EventEmitter(), {
+    registry,
+    entity: { position: new Vec3(0.5, 64, 0.5) },
+    inventory: { items: () => [{ name: 'crafting_table', count: 1 }] },
+    pathfinder: { setMovements () {}, bestHarvestTool: () => null },
+    canSeeBlock: () => true,
+    canDigBlock: () => true,
+    blockAt (position) {
+      if (position.equals(target) && placed) return table
+      const inside = position.x === 0 && position.z === 0 && [64, 65].includes(position.y)
+      const open = inside || (position.equals(target) && mined.length > 0)
+      const name = open ? 'air' : 'stone'
+      return {
+        name, position, type: registry.blocksByName[name].id,
+        boundingBox: open ? 'empty' : 'block',
+        shapes: open ? [] : [[0, 0, 0, 1, 1, 1]]
+      }
+    },
+    findBlock: () => null,
+    recipesFor: (_id, _metadata, _count, station) => station === table ? [recipe] : [],
+    equip: async () => {},
+    async placeBlock (support, face) {
+      assert.ok(support.position.plus(face).equals(target))
+      assert.equal(mined.length, 1)
+      placed = true
+    },
+    async craft (_recipe, _count, station) { assert.equal(station, table) },
+    async dig (block) { mined.push(block.name) },
+    nearestEntity: () => null
+  })
+  const skills = createSkills(bot, { badPositions: new Set() })
+  const result = await skills.run({ kind: 'craft', params: { item: 'stone_pickaxe' }, timeoutMs: 5000 })
+  assert.deepEqual(result, { ok: true, detail: 'crafted stone_pickaxe' })
+  assert.deepEqual(mined, ['stone', 'crafting_table'])
+})
+
 test('cancels the active skill when the player dies', async () => {
   const bot = Object.assign(new EventEmitter(), {
     registry: registryFor('1.20.4'),

@@ -16,6 +16,7 @@ const PLACEMENT_FACES = [
   new Vec3(0, 1, 0), new Vec3(1, 0, 0), new Vec3(-1, 0, 0),
   new Vec3(0, 0, 1), new Vec3(0, 0, -1), new Vec3(0, -1, 0)
 ]
+const RECESS_BLOCKS = new Set(['stone', 'deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'dirt'])
 
 export class SkillError extends Error {}
 
@@ -87,6 +88,11 @@ export function createSkills (bot, { badPositions }) {
     }
   }
 
+  function outsideHitbox (target) {
+    // Keep the station clear of the bot's own hitbox (half-width 0.3).
+    return Math.max(Math.abs(target.x + 0.5 - here().x), Math.abs(target.z + 0.5 - here().z)) >= 0.85
+  }
+
   function placementSpots () {
     const base = here().floored()
     const spots = []
@@ -94,9 +100,7 @@ export function createSkills (bot, { badPositions }) {
       for (let dx = -2; dx <= 2; dx++) {
         for (let dz = -2; dz <= 2; dz++) {
           const target = base.offset(dx, dy, dz)
-          // Keep the new block clear of the bot's own hitbox (half-width 0.3).
-          const gap = Math.max(Math.abs(target.x + 0.5 - here().x), Math.abs(target.z + 0.5 - here().z))
-          if (gap < 0.85) continue
+          if (!outsideHitbox(target)) continue
           const block = bot.blockAt(target)
           if (!block || !['air', 'cave_air'].includes(block.name)) continue
           for (const face of PLACEMENT_FACES) {
@@ -110,10 +114,34 @@ export function createSkills (bot, { badPositions }) {
     return spots.sort((a, b) => a.distance - b.distance)
   }
 
+  async function carveStationRecess (signal) {
+    const base = here().floored()
+    const up = PLACEMENT_FACES[0]
+    for (const [dx, dz] of Object.values(DIRECTIONS)) {
+      const target = base.offset(dx, 0, dz)
+      if (!outsideHitbox(target)) continue
+      const wall = bot.blockAt(target)
+      const support = bot.blockAt(target.minus(up))
+      if (support?.boundingBox !== 'block' || !RECESS_BLOCKS.has(wall?.name)) continue
+      if (!bot.canDigBlock(wall) || !bot.canSeeBlock(wall) || !movements.safeToBreak(wall)) continue
+      signal.throwIfAborted()
+      await equipFor(wall)
+      signal.throwIfAborted()
+      await bot.dig(wall, true)
+      return { target, support, face: up }
+    }
+    return null
+  }
+
   async function placeFromInventory (name, signal) {
     const item = inventoryItem((n) => n === name)
     if (!item) throw new SkillError(`no ${name} in inventory`)
-    for (const spot of placementSpots().slice(0, 8)) {
+    const spots = placementSpots().slice(0, 8)
+    if (spots.length === 0) {
+      const recess = await carveStationRecess(signal)
+      if (recess) spots.push(recess)
+    }
+    for (const spot of spots) {
       signal.throwIfAborted()
       try {
         await bot.equip(item, 'hand')

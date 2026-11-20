@@ -36,12 +36,17 @@ export function createPerception (bot, { badPositions }) {
   function visibleBlocks (inventory) {
     const eye = bot.entity.position.offset(0, bot.entity.eyeHeight, 0)
     const groups = new Map()
+    const visible = (block) => !badPositions.has(positionKey(block.position)) && bot.canSeeBlock(block)
     for (const scan of scans) {
       if (scan.ids.length === 0) continue
-      for (const position of bot.findBlocks({ matching: scan.ids, maxDistance: scan.maxDistance, count: scan.count })) {
-        if (badPositions.has(positionKey(position))) continue
+      const positions = bot.findBlocks({
+        matching: scan.ids,
+        maxDistance: scan.maxDistance,
+        count: scan.count,
+        useExtraInfo: visible
+      })
+      for (const position of positions) {
         const block = bot.blockAt(position)
-        if (!block || !bot.canSeeBlock(block)) continue
         const distance = eye.distanceTo(position.offset(0.5, 0.5, 0.5))
         let group = groups.get(block.name)
         if (!group) {

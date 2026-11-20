@@ -2,6 +2,18 @@
 
 A survival Minecraft bot that uses [Jev](https://docs.typesafe.ai), TypeSafe's System One model, to pick every action on its way to a diamond. It runs against a private, offline 1.20.4 server in Docker.
 
+## Watch a live survival run
+
+[![Gameplay at 5× speed showing the bot collect a naturally generated diamond](docs/media/live-diamond-pickup.gif)](docs/media/live-survival-run.mp4?raw=true)
+
+[**Watch the full run at 5× speed (1:57)**](docs/media/live-survival-run.mp4?raw=true)
+
+Recorded live from the bot's first-person viewer in a fresh vanilla Minecraft 1.20.4 world on Easy. The heuristic bot started with an empty inventory, crafted two iron pickaxes, and collected a naturally generated diamond in **102 actions, 9 minutes 37 seconds, and zero deaths**.
+
+[Reconstructed replay of the earlier spare-pickaxe run](docs/media/spare-pickaxe-replay.mp4?raw=true)
+
+## How it works
+
 ```text
  Minecraft server (Docker, offline, loopback only)
         ^ player protocol
@@ -9,7 +21,7 @@ A survival Minecraft bot that uses [Jev](https://docs.typesafe.ai), TypeSafe's S
  Mineflayer bot ──> perception (line of sight only, no x-ray)
         |                 |
         |                 v
-        |        objective ladder (code): wood -> stone -> iron -> smelt -> iron pickaxe -> Y=-58
+        |        objective ladder (code): wood -> stone -> iron -> smelt -> two iron pickaxes -> Y=-58
         |                 |
         |                 v
         |        legal actions for this moment (5–30 options)
@@ -23,6 +35,8 @@ A survival Minecraft bot that uses [Jev](https://docs.typesafe.ai), TypeSafe's S
 
 Code owns the control flow. Jev makes one narrow decision per step: which legal action to take next. This is the pattern TypeSafe recommends for System One models.
 
+The bot crafts a spare iron pickaxe before descending. If the first pickaxe breaks during the search, it keeps mining with the spare.
+
 ## Run
 
 ```bash
@@ -32,7 +46,7 @@ docker compose up --build     # server + bot
 
 - Watch in a browser: http://localhost:3007 (needs the optional `canvas` package; see below)
 - Or join with Minecraft Java 1.20.4 at `localhost:25565`
-- Each run writes `runs/<timestamp>/events.jsonl` (every decision with Jev's probabilities) and `summary.json`
+- Each run writes `events.jsonl` and `summary.json` in its own directory under `runs/`. Step events include the inventory, chosen action, and any Jev probabilities.
 
 To iterate on the bot without rebuilding the image:
 
@@ -67,5 +81,9 @@ Jev charges $42 per billion input tokens and nothing for output. A step sends ab
 ## Tests
 
 ```bash
-cd bot && npm test
+cd bot
+npm ci --omit=optional
+npm test
 ```
+
+The tests run without a Minecraft server or an API key. For a gameplay run on a private 1.20.4 server, set `POLICY=heuristic` and compare objective progress, failed actions, and deaths in the run logs.

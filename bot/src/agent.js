@@ -1,9 +1,11 @@
+import { once } from 'node:events'
 import { buildCandidates, createMemory } from './candidates.js'
 import { chooseObjective } from './objectives.js'
 import { createPerception } from './perception.js'
 import { createSkills } from './skills.js'
+import { count } from './items.js'
 
-const FAILURE_COOLDOWN_STEPS = { tunnel: 4, explore: 3, dig_down: 3 }
+const FAILURE_COOLDOWN_STEPS = { collect_drops: 5, tunnel: 4, explore: 3, dig_down: 3 }
 // $42 per billion input tokens; output tokens are free (docs.typesafe.ai/models).
 const JEV_USD_PER_INPUT_TOKEN = 42e-9
 
@@ -14,18 +16,30 @@ export async function runAgent ({ bot, config, policy, runlog, say = () => {} })
   const skills = createSkills(bot, { badPositions })
   const stats = { steps: 0, jevCalls: 0, jevLatencyMs: 0, jevInputTokens: 0, fallbacks: 0, deaths: 0, startedAt: Date.now() }
   let objectiveId = null
+  let lastLife = 0
+  let stockedIronPickaxes = false
 
   bot.on('death', () => {
     stats.deaths++
-    memory.recent.push({ action: 'died', outcome: 'respawned with an empty inventory' })
+    memory.recent.push({ action: 'died', outcome: 'died before respawning' })
     runlog.event('death', { step: memory.step })
   })
 
-  while (memory.step < config.maxSteps) {
-    memory.step++
-    stats.steps = memory.step
+  for (;;) {
+    while (lastLife !== stats.deaths) {
+      lastLife = stats.deaths
+      if (!bot.isAlive) await once(bot, 'spawn', { signal: AbortSignal.timeout(15_000) })
+      await bot.waitForChunksToLoad()
+      memory.blockedUntil.clear()
+      badPositions.clear()
+      stockedIronPickaxes = false
+    }
     const snapshot = perception.snapshot()
-    const objective = chooseObjective(snapshot, config.world)
+    const ironPickaxes = count(snapshot.inventory, 'iron_pickaxe')
+    if (ironPickaxes !== 1) stockedIronPickaxes = ironPickaxes >= 2
+    const objective = chooseObjective(snapshot, config.world, { stockedIronPickaxes })
+    if (objective.id !== 'done' && memory.step >= config.maxSteps) break
+    if (objective.id !== 'done') stats.steps = ++memory.step
 
     if (objective.id !== objectiveId) {
       runlog.event('objective', { step: memory.step, objective: objective.id, position: snapshot.position })
@@ -47,7 +61,9 @@ export async function runAgent ({ bot, config, policy, runlog, say = () => {} })
 
     const chosen = decision.candidate
     const started = Date.now()
-    const outcome = await skills.run(chosen)
+    const outcome = lastLife === stats.deaths
+      ? await skills.run(chosen)
+      : { ok: false, detail: 'died before the action could start' }
     const durationMs = Date.now() - started
 
     memory.recent.push({ action: chosen.key, outcome: `${outcome.ok ? 'ok' : 'failed'}: ${outcome.detail}` })
@@ -64,6 +80,7 @@ export async function runAgent ({ bot, config, policy, runlog, say = () => {} })
       position: snapshot.position,
       health: snapshot.health,
       food: snapshot.food,
+      inventory: snapshot.inventory,
       candidates: candidates.map((c) => c.key),
       choice: chosen.key,
       source: decision.source,

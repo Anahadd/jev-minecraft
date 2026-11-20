@@ -28,7 +28,7 @@ test('heuristic crafts the wooden pickaxe chain once it has enough wood', () => 
 
 test('heuristic mines diamond ore as soon as it is visible', () => {
   const ctx = setup({
-    inventory: { iron_pickaxe: 1 },
+    inventory: { iron_pickaxe: 2 },
     underground: true,
     position: { x: 0, y: -58, z: 0 },
     visible: [visible('deepslate'), visible('deepslate_diamond_ore', 6)]

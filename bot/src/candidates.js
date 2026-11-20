@@ -6,6 +6,7 @@ export const DIRECTIONS = { north: [0, -1], south: [0, 1], east: [1, 0], west: [
 export const TUNNEL_LENGTH = 12
 export const EXPLORE_DISTANCE = 32
 const DIG_DOWN_STEP = 10
+const DIAMOND_TUNNEL_LENGTH = 4
 const FOOD_ANIMALS = new Set(['cow', 'pig', 'sheep', 'rabbit', 'mooshroom'])
 
 export function createMemory () {
@@ -114,20 +115,21 @@ export function buildCandidates (snapshot, objective, memory = createMemory()) {
   craft('crafting_table', !hasTable, 'Craft a crafting table from 4 planks. Pickaxes need a crafting table.')
   craft('wooden_pickaxe', tier < 1, 'Craft a wooden pickaxe (3 planks, 2 sticks) at a crafting table.')
   craft('stone_pickaxe', tier < 2, 'Craft a stone pickaxe (3 cobblestone, 2 sticks) at a crafting table.')
-  craft('iron_pickaxe', tier < 3, 'Craft an iron pickaxe (3 iron ingots, 2 sticks) at a crafting table.')
+  craft('iron_pickaxe', objective.id === 'craft_iron_pickaxe',
+    'Craft an iron pickaxe (3 iron ingots, 2 sticks) at a crafting table.')
   craft('furnace', tier >= 2 && count(inventory, 'furnace') === 0 && snapshot.stations.furnace === null,
     'Craft a furnace from 8 cobblestone at a crafting table.')
   craft('stone_sword', tier >= 2 && !hasSword(inventory), 'Craft a stone sword (2 cobblestone, 1 stick) for fighting.')
 
-  const rawIron = count(inventory, 'raw_iron')
+  const smeltCount = Math.min(count(inventory, 'raw_iron'), Math.floor(fuelSmelts(inventory)))
   const furnaceReady = count(inventory, 'furnace') > 0 || snapshot.stations.furnace !== null
-  if (rawIron > 0 && furnaceReady && fuelSmelts(inventory) >= 1) {
+  if (smeltCount > 0 && furnaceReady) {
     add({
       key: 'smelt_raw_iron',
       kind: 'smelt',
-      params: { count: rawIron },
-      description: `Smelt ${rawIron} raw iron into iron ingots in a furnace (about ${rawIron * 10} seconds).`,
-      timeoutMs: rawIron * 10_000 + 40_000
+      params: { count: smeltCount },
+      description: `Smelt ${smeltCount} raw iron into iron ingots in a furnace (about ${smeltCount * 10} seconds).`,
+      timeoutMs: smeltCount * 10_000 + 40_000
     })
   }
 
@@ -143,13 +145,14 @@ export function buildCandidates (snapshot, objective, memory = createMemory()) {
     })
   }
   if (tier >= 1 && snapshot.underground) {
+    const length = objective.id === 'find_diamond' ? DIAMOND_TUNNEL_LENGTH : TUNNEL_LENGTH
     for (const dir of Object.keys(DIRECTIONS)) {
       const again = memory.lastTunnelDir === dir ? ' This continues your last tunnel.' : ''
       add({
         key: `tunnel_${dir}`,
         kind: 'tunnel',
-        params: { dir, length: TUNNEL_LENGTH },
-        description: `Dig a 1x2 tunnel ${TUNNEL_LENGTH} blocks ${dir} at Y=${y}. Ore in the new tunnel walls becomes visible.${again}`,
+        params: { dir, length },
+        description: `Dig a 1x2 tunnel ${length} blocks ${dir} at Y=${y}. Check the exposed walls for ore.${again}`,
         timeoutMs: 90_000
       })
     }

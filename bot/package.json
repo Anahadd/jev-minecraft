@@ -17,5 +17,8 @@
     "mineflayer-pathfinder": "^2.4.5",
     "prismarine-viewer": "^1.33.0",
     "vec3": "^0.1.10"
+  },
+  "devDependencies": {
+    "prismarine-registry": "^1.12.0"
   }
 }

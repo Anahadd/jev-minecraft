@@ -20,16 +20,26 @@ test('does not offer ore the bot cannot harvest', () => {
 })
 
 test('offers tunnels and digging down underground with a pickaxe', () => {
-  const keys = keysFor(snapshot({ inventory: { iron_pickaxe: 1 }, underground: true, position: { x: 0, y: 20, z: 0 } }))
+  const keys = keysFor(snapshot({ inventory: { iron_pickaxe: 2 }, underground: true, position: { x: 0, y: 20, z: 0 } }))
   assert.ok(keys.includes('dig_down'))
   assert.ok(keys.includes('tunnel_east'))
   assert.ok(!keys.includes('explore_east'))
 })
 
 test('limits dig_down to ten blocks per step', () => {
-  const snap = snapshot({ inventory: { iron_pickaxe: 1 }, underground: true, position: { x: 0, y: 20, z: 0 } })
+  const snap = snapshot({ inventory: { iron_pickaxe: 2 }, underground: true, position: { x: 0, y: 20, z: 0 } })
   const digDown = buildCandidates(snap, chooseObjective(snap, WORLD)).find((c) => c.key === 'dig_down')
   assert.equal(digDown.params.targetY, 10)
+})
+
+test('uses shorter tunnels at diamond depth so the bot checks newly exposed ore more often', () => {
+  const underground = { inventory: { iron_pickaxe: 2 }, underground: true }
+  const target = (y) => {
+    const snap = snapshot({ ...underground, position: { x: 0, y, z: 0 } })
+    return buildCandidates(snap, chooseObjective(snap, WORLD)).find((action) => action.key === 'tunnel_east')
+  }
+  assert.equal(target(20).params.length, 12)
+  assert.equal(target(-58).params.length, 4)
 })
 
 test('offers crafting only for items that are useful now', () => {
@@ -44,6 +54,25 @@ test('offers smelting when raw iron, a furnace, and fuel are present', () => {
   const inventory = { stone_pickaxe: 1, raw_iron: 3, furnace: 1, coal: 1 }
   const keys = keysFor(snapshot({ inventory, underground: true, position: { x: 0, y: 16, z: 0 } }))
   assert.ok(keys.includes('smelt_raw_iron'))
+})
+
+test('limits a smelting batch to the available fuel', () => {
+  const inventory = { stone_pickaxe: 1, raw_iron: 6, furnace: 1, oak_planks: 2 }
+  const snap = snapshot({ inventory })
+  const smelt = buildCandidates(snap, chooseObjective(snap, WORLD)).find((action) => action.key === 'smelt_raw_iron')
+  assert.equal(smelt.params.count, 3)
+})
+
+test('offers a second iron pickaxe before descending', () => {
+  const craftable = { iron_pickaxe: true }
+  const inventory = { iron_pickaxe: 1, iron_ingot: 3, stick: 2, crafting_table: 1 }
+  const beforeSpare = keysFor(snapshot({ inventory, craftable }))
+  assert.ok(beforeSpare.includes('craft_iron_pickaxe'))
+  assert.ok(!beforeSpare.includes('dig_down'))
+
+  const afterSpare = keysFor(snapshot({ inventory: { ...inventory, iron_pickaxe: 2 }, craftable }))
+  assert.ok(!afterSpare.includes('craft_iron_pickaxe'))
+  assert.ok(afterSpare.includes('dig_down'))
 })
 
 test('offers fight and flight when a hostile mob is close', () => {

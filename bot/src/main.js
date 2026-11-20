@@ -20,53 +20,58 @@ const bot = mineflayer.createBot({
 })
 bot.loadPlugin(pathfinderPkg.pathfinder)
 
+let result
+let kickReason
+let connectionError
+
 bot.on('kicked', (reason) => {
   console.error('Kicked:', reason)
-  runlog.event('kicked', { reason: String(reason) })
+  const detail = typeof reason === 'string' ? reason : JSON.stringify(reason)
+  kickReason = `kicked: ${detail}`
+  runlog.event('kicked', { reason })
 })
 bot.on('error', (error) => {
   console.error('Bot error:', error.message)
+  connectionError = error.message
   runlog.event('bot_error', { message: error.message })
 })
-bot.on('end', async (reason) => {
+bot.once('end', async (reason) => {
   runlog.event('disconnected', { reason })
+  result ??= { success: false, reason: kickReason ?? connectionError ?? `disconnected: ${reason}` }
+  runlog.summary({ run: runlog.id, policy: config.policy, model: config.jev.model, ...result })
+  console.log(result.success ? `Found a diamond! ${JSON.stringify(result.stats)}` : `No diamond: ${result.reason}`)
+  console.log(`Run log: ${runlog.dir}`)
   await runlog.close()
-  process.exit(process.exitCode ?? 0)
+  process.exit(result.success ? 0 : 1)
 })
 
 bot.once('spawn', async () => {
-  if (config.viewerPort) {
-    try {
-      const viewerModule = await import('prismarine-viewer')
-      const { mineflayer: startViewer } = viewerModule.default ?? viewerModule
-      startViewer(bot, { port: config.viewerPort, firstPerson: false })
-      console.log(`Viewer: http://localhost:${config.viewerPort}`)
-    } catch (error) {
-      console.warn(`Viewer disabled (${error.message.split('\n')[0]}). The run continues without it.`)
-    }
-  }
-  await bot.waitForChunksToLoad()
-
-  const jev = config.policy === 'jev' ? createJevClient(config.jev) : null
-  const policy = createPolicy({
-    mode: config.policy,
-    jev,
-    minConfidence: config.jev.minConfidence,
-    log: (type, data) => runlog.event(type, data)
-  })
-  runlog.event('start', { policy: config.policy, provider: config.jev.provider, model: config.jev.model, world: config.world })
-
-  let result
   try {
+    if (config.viewerPort) {
+      try {
+        const viewerModule = await import('prismarine-viewer')
+        const { mineflayer: startViewer } = viewerModule.default ?? viewerModule
+        startViewer(bot, { port: config.viewerPort, firstPerson: false })
+        console.log(`Viewer: http://localhost:${config.viewerPort}`)
+      } catch (error) {
+        console.warn(`Viewer disabled (${error.message.split('\n')[0]}). The run continues without it.`)
+      }
+    }
+    await bot.waitForChunksToLoad()
+
+    const jev = config.policy === 'jev' ? createJevClient(config.jev) : null
+    const policy = createPolicy({
+      mode: config.policy,
+      jev,
+      minConfidence: config.jev.minConfidence,
+      log: (type, data) => runlog.event(type, data)
+    })
+    runlog.event('start', { policy: config.policy, provider: config.jev.provider, model: config.jev.model, world: config.world })
+
     result = await runAgent({ bot, config, policy, runlog, say: (text) => bot.chat(text) })
   } catch (error) {
     console.error('Agent stopped:', error.message)
     result = { success: false, reason: error.message }
-    process.exitCode = 1
   }
-  runlog.summary({ run: runlog.id, policy: config.policy, model: config.jev.model, ...result })
-  console.log(result.success ? `Found a diamond! ${JSON.stringify(result.stats)}` : `No diamond: ${result.reason}`)
-  console.log(`Run log: ${runlog.dir}`)
-  if (!result.success) process.exitCode = 1
   bot.quit()
 })

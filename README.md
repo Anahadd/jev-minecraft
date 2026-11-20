@@ -2,6 +2,16 @@
 
 A survival Minecraft bot that uses [Jev](https://docs.typesafe.ai), TypeSafe's System One model, to pick every action on its way to a diamond. It runs against a private, offline 1.20.4 server in Docker.
 
+## The spare pickaxe run
+
+[![Animated replay of the bot mining a natural diamond with its spare iron pickaxe](docs/media/spare-pickaxe-replay.gif)](docs/media/spare-pickaxe-replay.mp4?raw=true)
+
+The bot started empty in a fresh vanilla 1.20.4 world on Easy, crafted two iron pickaxes, and found a naturally generated diamond after the first pickaxe broke. The heuristic run took **151 actions in 11 minutes 54 seconds with zero deaths**.
+
+The 41-second replay uses the recorded actions and terrain cutaways from the final world save. [Watch the MP4](docs/media/spare-pickaxe-replay.mp4?raw=true).
+
+## How it works
+
 ```text
  Minecraft server (Docker, offline, loopback only)
         ^ player protocol
